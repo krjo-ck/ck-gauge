@@ -4,9 +4,13 @@ import { useProjectData, useSignalData } from '@kvaser/canking-api/hooks';
 import { SelectSignalDialog } from '@kvaser/canking-api/controls';
 import { FrameDefinition, SignalDefinition } from '@kvaser/canking-api/models';
 import { EditIcon, MoreHorizIcon } from '@kvaser/canking-api/icons';
-import { Box, IconButton, Typography, useTheme } from '@mui/material';
-import { GaugeContainer, GaugeReferenceArc, GaugeValueArc, useGaugeState } from '@mui/x-charts';
-import ConfigDialog from './ConfigDialog';
+import { Box, IconButton, Typography } from '@mui/material';
+import { GaugeContainer, GaugeReferenceArc, GaugeValueArc } from '@mui/x-charts';
+import ConfigDialog, { Configuration } from './ConfigDialog';
+import { GaugePointer } from './GaugePointer';
+import { GaugeMajorTick } from './GaugeMajorTick';
+import { GaugeMinorTick } from './GaugeMinorTick';
+import { GaugeLabel } from './GaugeLabel';
 
 // If any data should be stored in the project file then add it to this interface
 interface IProjectData {
@@ -22,6 +26,18 @@ interface IProjectData {
   maxSignalValue: number;
   // Number of decimals to show
   decimals: number;
+  // Show gauge unit label
+  showUnitLabel: boolean;
+  // Show gauge value label
+  showValueLabel: boolean;
+  // Show gauge pointer
+  showPointer: boolean;
+  // Show gauge ticks
+  showTicks: boolean;
+  // Number of major ticks
+  majorTicks: number;
+  // Number of minor ticks between major ticks
+  minorTicksPerMajor: number;
 }
 
 // Define any default values for the project data that will be used when the component is created
@@ -32,32 +48,13 @@ const defaultProjectData: IProjectData = {
   minSignalValue: -500,
   maxSignalValue: 500,
   decimals: 2,
+  showUnitLabel: true,
+  showValueLabel: true,
+  showPointer: true,
+  showTicks: true,
+  majorTicks: 7,
+  minorTicksPerMajor: 4,
 };
-
-function GaugePointer() {
-  const { valueAngle, outerRadius, cx, cy } = useGaugeState();
-  const theme = useTheme();
-
-  if (valueAngle === null) {
-    // No value to display
-    return null;
-  }
-
-  const target = {
-    x: cx + outerRadius * Math.sin(valueAngle),
-    y: cy - outerRadius * Math.cos(valueAngle),
-  };
-  return (
-    <g>
-      <circle cx={cx} cy={cy} r={5} fill={theme.palette.secondary.main} />
-      <path
-        d={`M ${cx} ${cy} L ${target.x} ${target.y}`}
-        stroke={theme.palette.secondary.main}
-        strokeWidth={3}
-      />
-    </g>
-  );
-}
 
 // This component is the component that will be loaded into the Workspace view
 function WorkspaceView() {
@@ -98,7 +95,7 @@ function WorkspaceView() {
     if (signal?.doubleValue === undefined) {
       return 'No data';
     }
-    return `${signal.doubleValue.toFixed(projectData.decimals)} ${signal.unit ?? ''}`;
+    return `${signal.doubleValue.toFixed(projectData.decimals)}`;
   }, [projectData.qualifiedSignalName, projectData.decimals, signalData]);
 
   const [showConfigDialog, setShowConfigDialog] = useState(false);
@@ -108,12 +105,18 @@ function WorkspaceView() {
   const handleCloseConfigDialog = useCallback(() => {
     setShowConfigDialog(false);
   }, []);
-  const handleSaveConfig = useCallback((config: { minSignalValue: number; maxSignalValue: number; decimals: number; }) => {
+  const handleSaveConfig = useCallback((config: Configuration) => {
     setProjectData(curr => ({
       ...curr,
       minSignalValue: config.minSignalValue,
       maxSignalValue: config.maxSignalValue,
       decimals: config.decimals,
+      showPointer: config.showPointer,
+      showUnitLabel: config.showUnitLabel,
+      showValueLabel: config.showValueLabel,
+      showTicks: config.showTicks,
+      majorTicks: config.majorTicks,
+      minorTicksPerMajor: config.minorTicksPerMajor,
     }));
     setShowConfigDialog(false);
   }, [setProjectData]);
@@ -134,9 +137,24 @@ function WorkspaceView() {
       <GaugeContainer startAngle={-110} endAngle={110} valueMin={projectData.minSignalValue} valueMax={projectData.maxSignalValue} value={signalValue}>
         <GaugeReferenceArc />
         <GaugeValueArc skipAnimation />
-        <GaugePointer />
+        {projectData.showTicks && Array.from({ length: projectData.majorTicks }, (_, i) => {
+          const majorTickValue = projectData.minSignalValue + i * (projectData.maxSignalValue - projectData.minSignalValue) / (projectData.majorTicks - 1);
+          return (
+            <GaugeMajorTick key={`major-tick-${i}`} value={majorTickValue} />
+          );
+        })}
+        {projectData.showTicks && Array.from({ length: projectData.majorTicks - 1 }, (_major, i) => {
+          return Array.from({ length: projectData.minorTicksPerMajor }, (_minor, j) => {
+            const minorTickValue = projectData.minSignalValue + (i + (j + 1) / (projectData.minorTicksPerMajor + 1)) * (projectData.maxSignalValue - projectData.minSignalValue) / (projectData.majorTicks - 1);
+            return (
+              <GaugeMinorTick key={`minor-tick-${i}-${j}`} value={minorTickValue} />
+            );
+          });
+        })}
+        {projectData.showUnitLabel && <GaugeLabel text={projectData.signalUnit ?? ''} position="above" fontSize="small" />}
+        {projectData.showValueLabel && <GaugeLabel text={signalText} position="below" fontSize="large" />}
+        {projectData.showPointer && <GaugePointer />}
       </GaugeContainer>
-      <Typography variant="h6" mb={2}>{signalText}</Typography>
     </Box>
   );
 }
